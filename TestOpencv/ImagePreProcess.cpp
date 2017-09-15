@@ -7,6 +7,8 @@
 #include <fstream>
 #include "Log.h"
 
+
+
 using namespace cv;
 
 Mat getRplane(const Mat & in) {
