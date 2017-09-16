@@ -102,7 +102,7 @@ void findLargestSquare(const std::vector<std::vector<cv::Point> >& squares,
 }
 
 int main() {
-	std::string picPath = R"(C:\Users\Fan\Desktop\resize.jpg)";
+	std::string picPath = R"(C:\Users\Fan\Desktop\source.jpg)";
 	cv::Mat src = cv::imread(picPath);
 	std::cout << src.size().width << std::endl;
 	cv::imshow("source", src);
@@ -117,15 +117,21 @@ int main() {
 
 		//printf("%d,%d,%d,%d\n", largest_square[0].x, largest_square[0].y, largest_square[1].x, largest_square[1].y);
 		auto imageRoi = src(cv::Rect(largest_square[0].x, largest_square[0].y, largest_square[1].x, largest_square[1].y));
-		cv::imshow("Corners", imageRoi);
-		cv::imwrite("result.jpg", imageRoi);
+		//cv::imshow("Corners", imageRoi);
+		//cv::imwrite("result.jpg", imageRoi);
 		cv::Mat imageRplane = getRplane(imageRoi);
+
+		cv::imshow("Rplane",imageRplane);
+
 
 		std::vector <cv::RotatedRect> rects;
 		postDetect(imageRplane, rects);
 
+		util::log("end post");
 		cv::Mat outputMat;
 		normalPosArea(imageRplane, rects[0], outputMat);
+
+		util::log("end normal pos area");
 
 		std::vector<cv::Mat> charMat;
 		charSegment(outputMat, charMat);

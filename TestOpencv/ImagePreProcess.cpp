@@ -83,25 +83,33 @@ void postDetect(const cv::Mat & in, std::vector<cv::RotatedRect>& rects) {
 	Mat threshold_R;
 	ostuBeresenThreshold(in, threshold_R);
 
+	//imshow("ostu", threshold_R);
+
 	Mat imgInv(in.size(), in.type(), Scalar(255));
 	Mat threshold_Inv = imgInv - threshold_R;
+
 
 	Mat element = getStructuringElement(MORPH_RECT, Size(15, 3));
 	morphologyEx(threshold_Inv, threshold_Inv, CV_MOP_CLOSE, element);
 
 	std::vector<std::vector<Point>> contours;
 
+	imshow("threshold_Inv", threshold_Inv);
 	findContours(threshold_Inv, contours, CV_RETR_EXTERNAL, CV_CHAIN_APPROX_NONE);
 	auto itc = contours.begin();
 
+	util::log("contours_size", (int)contours.size());
+
+	int i = 0;
 	while (itc != contours.end()) {
 		RotatedRect mr = minAreaRect(Mat(*itc));
-		if (isEligible(mr)) {
+		if (!isEligible(mr)) {
 			itc = contours.erase(itc);
 		} else {
 			rects.push_back(mr);
 			++itc;
 		}
+		++i;
 	}
 }
 
@@ -135,9 +143,12 @@ void normalPosArea(const cv::Mat & inputImg, cv::RotatedRect & rects_optimal, cv
 
 void charSegment(const cv::Mat & inputImg, std::vector<cv::Mat>& dest_mat) {
 	Mat img_threshold;
+	util::log("charSegment");
+	//util::log(inputImg.rows);
+	//util::log(inputImg.cols);
 
-	util::log(inputImg.rows);
-	util::log(inputImg.cols);
+	imshow("charSegment", inputImg);
+	imwrite("result\\idcode.jpg", inputImg);
 
 	Mat whiteImage(inputImg.size(), inputImg.type(), Scalar(255));
 	Mat in_Inv = whiteImage - inputImg;
@@ -172,8 +183,12 @@ void charSegment(const cv::Mat & inputImg, std::vector<cv::Mat>& dest_mat) {
 	}
 	x_char[18] = img_threshold.cols;
 
+	//util::log()
+
 	for (int i = 0; i < 18; i++) {
-		dest_mat.push_back(Mat(in_Inv, Rect(x_char[i], 0, x_char[i + 1] - x_char[i], img_threshold.rows)));
+		Rect  rect(x_char[i], 0, x_char[i + 1] - x_char[i], img_threshold.rows);
+		std::cout << i << ":" << "x:" << rect.x << "y:" << rect.y << "width:" << rect.width << "height:" << rect.height << std::endl;
+		dest_mat.push_back(Mat(in_Inv, rect));
 	}
 	delete[] flag;
 }
@@ -239,8 +254,8 @@ void calcGradientFeat(const Mat &imgSrc, Mat &out) {
 	float totalValueX = sumMatValue(sobelX);
 	float totalValueY = sumMatValue(sobelY);
 
-	for (int i = 0; i < image.rows; i++) {
-		for (int j = 0; j < image.cols; j++) {
+	for (int i = 0; i < image.rows; i += 4) {
+		for (int j = 0; j < image.cols; j += 4) {
 			Mat subImageX = sobelX(Rect(j, i, 4, 4));
 			feat.push_back(sumMatValue(subImageX) / totalValueX);
 			Mat subImageY = sobelY(Rect(j, i, 4, 4));
@@ -272,7 +287,7 @@ void calcGradientFeat(const Mat &imgSrc, Mat &out) {
 
 void getAnnXml() {
 	std::ifstream fin("ann.xml");
-	if (!fin) {
+	if (fin) {
 		return;
 	}
 	FileStorage fs("ann.xml", FileStorage::WRITE);
@@ -285,8 +300,8 @@ void getAnnXml() {
 	char path[60];
 	Mat img_read;
 	for (int i = 0; i < 10; i++) {
-		for (int j = 0; j < 51; j++) {
-			sprintf_s(path, "./Number_char/%d/%d£¨%d£©.png\0", i, i, j);
+		for (int j = 1; j < 51; j++) {
+			sprintf_s(path, "Number_char/%d/%d (%d).png", i, i, j);
 			img_read = imread(path, 0);
 			Mat dest_feature;
 			calcGradientFeat(img_read, dest_feature);
@@ -308,13 +323,13 @@ void annTrain(cv::Ptr<cv::ml::ANN_MLP> ann, int numCharacters, int nlayers) {
 	fs["TrainingData"] >> trainData;
 	fs["classes"] >> classes;
 
-	Mat layerSizes(1, 3, CV_32FC1);
+	Mat layerSizes(1, 3, CV_32SC1);
 	layerSizes.at<int>(0) = trainData.cols;
 	layerSizes.at<int>(1) = nlayers;
 	layerSizes.at<int>(2) = numCharacters;
 	//ann->create(layerSizes, ml::ANN_MLP::SIGMOID_SYM, 1, 1);
 	ann->setLayerSizes(layerSizes);
-	ann->setActivationFunction(ml::ANN_MLP::SIGMOID_SYM,1,1);
+	ann->setActivationFunction(ml::ANN_MLP::SIGMOID_SYM, 1, 1);
 	TermCriteria termCirteria(CV_TERMCRIT_ITER + CV_TERMCRIT_EPS, 5000, 0.01);
 	ann->setTermCriteria(termCirteria);
 
@@ -329,7 +344,7 @@ void annTrain(cv::Ptr<cv::ml::ANN_MLP> ann, int numCharacters, int nlayers) {
 			}
 		}
 	}
-	ann->train(trainData,ml::ROW_SAMPLE , trainClasses);
+	ann->train(trainData, ml::ROW_SAMPLE, trainClasses);
 }
 
 void classify(cv::Ptr<cv::ml::ANN_MLP> ann, std::vector<cv::Mat>& charMat, std::vector<int>& charResult) {
@@ -337,6 +352,9 @@ void classify(cv::Ptr<cv::ml::ANN_MLP> ann, std::vector<cv::Mat>& charMat, std::
 	for (int i = 0; i < charMat.size(); i++) {
 		Mat outPut(1, 10, CV_32FC1);
 
+		std::ostringstream name;
+		name <<"result\\"<< i << ".jpg";
+		imwrite(name.str(), charMat[i]);
 		Mat charFature;
 		calcGradientFeat(charMat[i], charFature);
 		ann->predict(charFature, outPut);
